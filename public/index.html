@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Node + On-Chain Files Demo</title>
+  <link rel="stylesheet" href="style.css" />
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const e = React.createElement;
+    const { useState, useEffect } = React;
+
+    function App() {
+      const [nodes, setNodes] = useState([]);
+      const [selected, setSelected] = useState("");
+      const [file, setFile] = useState(null);
+      const [status, setStatus] = useState("");
+      const [meta, setMeta] = useState(null);
+
+      async function loadNodes() {
+        try {
+          const r = await axios.get("/nodes");
+          setNodes(r.data);
+        } catch (e) { console.error(e); setStatus("Failed to load nodes"); }
+      }
+
+      async function loadMeta(addr) {
+        try {
+          const r = await axios.get(`/nodes`); // nodes endpoint has scores; to get file meta ask backend to read contract?
+          // We'll fetch on-chain metadata via GET /download? but backend exposes getFileMeta only when downloading.
+          // For simplicity call /nodes and then /download attempt? Instead we'll request /filemeta endpoint - add if desired.
+        } catch(e){console.error(e);}
+      }
+
+      useEffect(()=>{ loadNodes(); const id=setInterval(loadNodes,4000); return ()=>clearInterval(id); },[]);
+
+      async function upload() {
+        if (!selected) return alert("Select node");
+        if (!file) return alert("Select file");
+        setStatus("Uploading...");
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          const res = await axios.post(`/upload/${selected}`, fd);
+          setStatus("Uploaded. CID: " + res.data.cid);
+          loadNodes();
+        } catch(e){ console.error(e); setStatus("Upload failed"); }
+      }
+
+      async function download() {
+        if (!selected) return alert("Select node");
+        setStatus("Downloading...");
+        try {
+          const resp = await axios.get(`/download/${selected}`, { responseType: "blob" });
+          const url = window.URL.createObjectURL(new Blob([resp.data]));
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "downloaded_from_node";
+          a.click();
+          setStatus("Downloaded file");
+        } catch(e){ console.error(e); setStatus("Download failed"); }
+      }
+
+      return e("div", { className:"wrap" },
+        e("h1", null, "Node Network — Onchain File Metadata (local demo)"),
+        e("div", { className:"nodes" },
+          nodes.map(n => e("div", { key:n.address, className:"node", onClick: ()=> setSelected(n.address), style:{ border: selected===n.address ? "2px solid #0af" : "1px solid #ddd" } },
+            e("div", { className:"addr" }, n.address),
+            e("div", { className:"score" }, "Score: " + n.score),
+            e("div", { className:"pub" }, "PubKey: " + (n.publicKey ? n.publicKey.slice(0,8) + "..." : "—"))
+          ))
+        ),
+        e("div", { className:"actions" },
+          e("input", { type:"file", onChange: (ev)=> setFile(ev.target.files[0]) }),
+          e("button", { onClick: upload }, "Upload to selected node"),
+          e("button", { onClick: download }, "Download from selected node")
+        ),
+        e("div", { className:"status" }, status)
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(e(App));
+  </script>
+</body>
+</html>
